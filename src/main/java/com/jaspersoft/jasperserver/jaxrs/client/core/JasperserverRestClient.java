@@ -86,7 +86,7 @@ public class JasperserverRestClient {
                     credentials,
                     Locale.getDefault(),
                     TimeZone.getDefault());
-            getToken(sessionStorage);
+            getToken(sessionStorage, "SAMPLE_ROLE", "organization_1");
         }
 
         return null;
@@ -135,8 +135,19 @@ public class JasperserverRestClient {
         WebTarget rootTarget = sessionStorage.getRootTarget();
 //        WebTarget target = rootTarget.path("/j_spring_security_check");
         WebTarget target = rootTarget;
-        Response response = target.request()
-        return;
+        Response response = target.request().post(Entity.entity(form, MediaType.APPLICATION_FORM_URLENCODED_TYPE));
+        if (response.getStatus() == Status.FOUND.getStatusCode()) {
+            String location = response.getLocation().toString();
+            String sessionId;
+            if (!location.matches("[^?]+\\?([^&]*&)*error=1(&[^&]*)*$")) {
+                sessionId = response.getCookies().get("JSESSIONID").getValue();
+                sessionStorage.setSessionId(sessionId);
+            } else {
+                throw new AuthenticationFailedException("Invalid paramters for token authentication. Could not obtain a JasperReports session");
+            }
+            rootTarget.register(new SessionOutputFilter(sessionId));
+        } else {
+            throw new ResourceNotFoundException("Server was not found");
+        }
     }
-
 }
