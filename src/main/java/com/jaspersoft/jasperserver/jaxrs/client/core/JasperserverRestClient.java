@@ -79,6 +79,19 @@ public class JasperserverRestClient {
         return null;
     }
 
+    public Session getTokenSession (String username, String role, String organization, String... pAttributes) {
+        if (username != null && username.length() > 0 && role != null && role.length() > 0 && organization != null && organization.length() > 0) {
+            AuthenticationCredentials credentials = new AuthenticationCredentials(username);
+            SessionStorage sessionStorage = new SessionStorage(configuration,
+                    credentials,
+                    Locale.getDefault(),
+                    TimeZone.getDefault());
+            getToken(sessionStorage);
+        }
+
+        return null;
+    }
+
     public AnonymousSession getAnonymousSession() {
         return new AnonymousSession(new SessionStorage(configuration, null, Locale.getDefault(), TimeZone.getDefault()));
     }
@@ -96,7 +109,7 @@ public class JasperserverRestClient {
         form.param("userTimezone", storage.getUserTimeZone().getID());
         form.param("userLocale", storage.getUserLocale().toString());
         WebTarget target = rootTarget.path("/j_spring_security_check")
-                    .property(ClientProperties.FOLLOW_REDIRECTS, Boolean.FALSE);
+                .property(ClientProperties.FOLLOW_REDIRECTS, Boolean.FALSE);
         Response response = target.request().post(Entity.entity(form, MediaType.APPLICATION_FORM_URLENCODED_TYPE));
         if (response.getStatus() == Status.FOUND.getStatusCode()) {
             String location = response.getLocation().toString();
@@ -113,5 +126,17 @@ public class JasperserverRestClient {
         }
     }
 
+    protected void getToken(SessionStorage sessionStorage, String role, String organization, String... pAttributes) {
+        AuthenticationCredentials credentials = sessionStorage.getCredentials();
+        Form form = new Form();
+        form.param("j_username", credentials.getUsername());
+        form.param("principleParameter", "pp").param("u", credentials.getUsername()).param("r", role).param("o", organization);
+
+        WebTarget rootTarget = sessionStorage.getRootTarget();
+//        WebTarget target = rootTarget.path("/j_spring_security_check");
+        WebTarget target = rootTarget;
+        Response response = target.request()
+        return;
+    }
 
 }
