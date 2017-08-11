@@ -26,14 +26,29 @@ import com.jaspersoft.jasperserver.jaxrs.client.core.exceptions.JSClientWebExcep
 import com.jaspersoft.jasperserver.jaxrs.client.core.exceptions.ResourceNotFoundException;
 import com.jaspersoft.jasperserver.jaxrs.client.filters.BasicAuthenticationFilter;
 import com.jaspersoft.jasperserver.jaxrs.client.filters.SessionOutputFilter;
+
+import java.io.IOException;
+import java.net.URI;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TimeZone;
 import javax.ws.rs.client.Entity;
+import javax.ws.rs.client.Invocation;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Form;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.NewCookie;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
+
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.message.BufferedHeader;
 import org.glassfish.jersey.client.ClientProperties;
 
 public class JasperserverRestClient {
@@ -86,7 +101,8 @@ public class JasperserverRestClient {
                     credentials,
                     Locale.getDefault(),
                     TimeZone.getDefault());
-            getToken(sessionStorage, "SAMPLE_ROLE", "organization_1");
+            getToken(sessionStorage, role, organization);
+            return new Session(sessionStorage);
         }
 
         return null;
@@ -126,28 +142,66 @@ public class JasperserverRestClient {
         }
     }
 
-    protected void getToken(SessionStorage sessionStorage, String role, String organization, String... pAttributes) {
+        protected void getToken(SessionStorage sessionStorage, String role, String organization, String... pAttributes) {
         AuthenticationCredentials credentials = sessionStorage.getCredentials();
         Form form = new Form();
-        form.param("j_username", credentials.getUsername());
         form.param("principleParameter", "pp").param("u", credentials.getUsername()).param("r", role).param("o", organization);
 
         WebTarget rootTarget = sessionStorage.getRootTarget();
-//        WebTarget target = rootTarget.path("/j_spring_security_check");
-        WebTarget target = rootTarget;
-        Response response = target.request().post(Entity.entity(form, MediaType.APPLICATION_FORM_URLENCODED_TYPE));
-        if (response.getStatus() == Status.FOUND.getStatusCode()) {
-            String location = response.getLocation().toString();
-            String sessionId;
-            if (!location.matches("[^?]+\\?([^&]*&)*error=1(&[^&]*)*$")) {
-                sessionId = response.getCookies().get("JSESSIONID").getValue();
+
+        WebTarget queryParam = rootTarget.queryParam("pp", "u=" + credentials.getUsername() + "|r=" + role + "|o=" + organization);
+        Invocation.Builder acceptTarget = queryParam.request().accept(MediaType.APPLICATION_FORM_URLENCODED_TYPE);
+        Response response = acceptTarget.get(Response.class);
+//
+//            WebTarget target = rootTarget.queryParam("pp", "u=" + credentials.getUsername() + "|r=" + role + "|o=" + organization)
+//                .property(ClientProperties.FOLLOW_REDIRECTS, Boolean.FALSE);
+//        Response response = target.request(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_JSON, "UTF-8").cookie("Set-Cookie",sessionStorage.getSessionId()).get();
+        if (response.getStatus() == Status.OK.getStatusCode()) {
+            Map<String, NewCookie> testCookie = response.getCookies();
+            NewCookie newCookie = testCookie.get("JSESSIONID");
+
+            String sessionId = newCookie.getValue();
+//                sessionId = response.getCookies().get("JSESSIONID").getValue();
+//                Map<String, Object> jsonResponse = response.readEntity(Map.class);
                 sessionStorage.setSessionId(sessionId);
-            } else {
-                throw new AuthenticationFailedException("Invalid paramters for token authentication. Could not obtain a JasperReports session");
-            }
             rootTarget.register(new SessionOutputFilter(sessionId));
         } else {
             throw new ResourceNotFoundException("Server was not found");
         }
+    }
+
+//    protected void getToken(SessionStorage sessionStorage, String role, String organization, String... pAttributes) {
+//        AuthenticationCredentials credentials = sessionStorage.getCredentials();
+//        WebTarget rootTarget = sessionStorage.getRootTarget();
+//        HttpClient client = HttpClientBuilder.create().build();
+//        HttpGet request = new HttpGet(rootTarget.getUri() + "?pp=u%3D" + credentials.getUsername()
+//                + "%7Cr%3D" + role + "%7Co%3D" + organization);
+//        HttpResponse response;
+//        String ret;
+//        try {
+//            response = client.execute(request);
+//            ret = response.getHeaders("Set-Cookie")[0].getValue();
+//            Map<String, String> cookieMap = parseMap(ret);
+//            if (cookieMap.containsKey("JSESSIONID")) {
+//                String sessionId = cookieMap.get("JSESSIONID");
+//                sessionStorage.setSessionId(sessionId);
+//                rootTarget.register(new SessionOutputFilter(sessionId));
+//            } else {
+//                throw new AuthenticationFailedException("There was no JSESSIONID returned in the request");
+//            }
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//    }
+
+    private Map<String, String> parseMap(String input) {
+        Map<String, String> map = new HashMap<String, String>();
+        for (String str : input.split(";")) {
+            String[] kv = str.split("=");
+            if (kv.length > 1) {
+                map.put(kv[0], kv[1]);
+            }
+        }
+        return map;
     }
 }
